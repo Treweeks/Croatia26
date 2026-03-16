@@ -561,7 +561,7 @@ label{font-size:0.74rem;font-weight:700;color:var(--muted);text-transform:upperc
   <div class="photo-modal">
     <button class="photo-modal-close" onclick="closePhotoModal()">✕</button>
     <h3>📸 Add Photo</h3>
-    <p>Paste any image URL — Instagram, WhatsApp, Google Images, or any direct image link.</p>
+    <p>Paste any image URL. Photos are saved <strong>on this device only</strong> — each person adds photos on their own phone. They won't disappear when syncing.</p>
     <div id="photo-preview-wrap" style="text-align:center">
       <div class="photo-preview-placeholder" id="photo-preview-placeholder">👤</div>
     </div>
@@ -633,7 +633,25 @@ let leagueWinnerSide = null;
 //  PERSISTENCE — localStorage + JSONBin
 // ════════════════════════════════════════════════════
 function saveLocal() {
-  try { localStorage.setItem('fam_tourney_v5', JSON.stringify(state)); } catch(e){}
+  try {
+    // Save state WITHOUT photos (keeps JSONBin payload small and avoids sync conflicts)
+    const slim = JSON.parse(JSON.stringify(state));
+    slim.players = slim.players.map(p => ({ ...p, photo: null }));
+    localStorage.setItem('fam_tourney_v5', JSON.stringify(slim));
+    // Photos stored separately — never pushed to cloud, per-device only
+    const photos = {};
+    state.players.forEach(p => { if (p.photo) photos[p.id] = p.photo; });
+    localStorage.setItem('fam_tourney_photos', JSON.stringify(photos));
+  } catch(e) { console.error('saveLocal error', e); }
+}
+
+function loadPhotos() {
+  try {
+    const raw = localStorage.getItem('fam_tourney_photos');
+    if (!raw) return;
+    const photos = JSON.parse(raw);
+    state.players.forEach(p => { if (photos[p.id]) p.photo = photos[p.id]; });
+  } catch(e) {}
 }
 
 async function pushToCloud() {
@@ -716,15 +734,9 @@ async function pullFromCloud() {
       console.error('Unexpected response shape', d);
       return false;
     }
-    // Safety net: never overwrite a locally-saved photo with null from the cloud
-    // (photos are pushed immediately but there's always a small window)
-    const localPhotos = {};
-    state.players.forEach(p => { if (p.photo) localPhotos[p.id] = p.photo; });
     state = incoming;
-    state.players.forEach(p => {
-      if (!p.photo && localPhotos[p.id]) p.photo = localPhotos[p.id];
-    });
     if (!state.league) state.league = { games:[] };
+    loadPhotos(); // always reapply local photos — cloud never stores them
     saveLocal();
     return true;
   } catch(e) {
@@ -735,8 +747,63 @@ async function pullFromCloud() {
 
 function save() {
   saveLocal();
+  // Snapshot NOW — before any pull can corrupt state in the next 1.5s
+  const snapshot = JSON.stringify(state);
   clearTimeout(syncTimer);
-  syncTimer = setTimeout(pushToCloud, 1500);
+  syncTimer = setTimeout(() => pushSnapshot(snapshot), 1500);
+}
+
+async function pushSnapshot(snapshot) {
+  syncTimer = null;
+  if (!jbKey) return;
+  pushInProgress = true;
+  const btn = document.getElementById('sync-btn');
+  btn.textContent = '↻ Saving…'; btn.className = 'sync-btn syncing';
+  try {
+    const doCreate = async () => {
+      const r = await fetch('https://api.jsonbin.io/v3/b', {
+        method:'POST',
+        headers:{ 'Content-Type':'application/json', 'X-Master-Key':jbKey, 'X-Bin-Name':'family-tournament', 'X-Bin-Private':'false' },
+        body: snapshot
+      });
+      if (!r.ok) { const txt=await r.text(); throw new Error('Create failed: '+r.status+' '+txt); }
+      const d = await r.json();
+      jbBinId = d.metadata.id;
+      localStorage.setItem('jb_bin', jbBinId);
+      history.replaceState(null, '', window.location.pathname + window.location.search + '#bin=' + jbBinId);
+      renderSyncUI();
+    };
+    if (!jbBinId) {
+      await doCreate();
+    } else {
+      const r = await fetch('https://api.jsonbin.io/v3/b/'+jbBinId, {
+        method:'PUT',
+        headers:{ 'Content-Type':'application/json', 'X-Master-Key':jbKey },
+        body: snapshot
+      });
+      if (r.status === 404) {
+        console.warn('Bin 404 on PUT — recreating');
+        jbBinId = ''; localStorage.removeItem('jb_bin');
+        await doCreate();
+        await fetch('https://api.jsonbin.io/v3/b/'+jbBinId, {
+          method:'PUT', headers:{ 'Content-Type':'application/json', 'X-Master-Key':jbKey }, body: snapshot
+        });
+        toast('⚠️ Bin recreated — copy the new share link from Players tab!');
+      } else if (!r.ok) {
+        const txt = await r.text();
+        throw new Error('Put failed: '+r.status+' '+txt);
+      }
+    }
+    btn.textContent = '✓ Saved'; btn.className = 'sync-btn ok';
+    setTimeout(() => { btn.textContent = '↻ Sync'; btn.className = 'sync-btn'; }, 2500);
+  } catch(e) {
+    btn.textContent = '✕ Error'; btn.className = 'sync-btn err';
+    setTimeout(() => { btn.textContent = '↻ Sync'; btn.className = 'sync-btn'; }, 3000);
+    console.error('Push error', e);
+    toast('Push error: ' + e.message);
+  } finally {
+    pushInProgress = false;
+  }
 }
 
 function load() {
@@ -744,6 +811,7 @@ function load() {
     const d = localStorage.getItem('fam_tourney_v5');
     if (d) { state = JSON.parse(d); if (!state.league) state.league = { games:[] }; }
   } catch(e){}
+  loadPhotos(); // reapply local photos on top of loaded state
 }
 
 async function manualSync() {
@@ -925,9 +993,9 @@ function savePhotoUrl() {
   const player = state.players.find(p => p.id === photoModalPlayerId);
   if (player) {
     player.photo = url;
-    saveLocal();           // save locally immediately
-    clearTimeout(syncTimer);
-    pushToCloud();         // push straight away — don't debounce photo saves
+    saveLocal();              // save to localStorage immediately
+    clearTimeout(syncTimer);  // cancel any pending debounced push
+    pushToCloud();            // push to cloud right now — don't debounce
     renderPlayers();
     renderAllMatches();
     toast(player.name + "'s photo saved! 📸");
@@ -937,7 +1005,14 @@ function savePhotoUrl() {
 
 function clearPhoto() {
   const player = state.players.find(p => p.id === photoModalPlayerId);
-  if (player) { player.photo = null; save(); renderPlayers(); renderAllMatches(); }
+  if (player) {
+    player.photo = null;
+    saveLocal();
+    clearTimeout(syncTimer);
+    pushToCloud();
+    renderPlayers();
+    renderAllMatches();
+  }
   closePhotoModal();
   toast('Photo removed');
 }
