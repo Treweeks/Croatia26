@@ -1610,15 +1610,15 @@ function resetTournament(sport) {
   toast('Tournament reset!');
 }
 function resetTournamentsOnly() {
-  if (!confirm('Reset all tournaments and league results?\n\nPlayers and photos will be KEPT.\nAll match results and history will be wiped.\n\nPerfect for going live after testing!')) return;
+  if (!confirm('Reset all tournaments and league results?\n\nPlayers and photos will be KEPT.\nAll match results, history and league games will be wiped.\n\nPerfect for going live after testing!')) return;
   const players = state.players; // preserve players + photos
   state = {
     players,
-    tt:   { format:'roundrobin', matches:[], generated:false, num:1 },
-    pool: { format:'roundrobin', matches:[], generated:false, num:1 },
+    tt:          { format:'roundrobin', matches:[], generated:false, num:1 },
+    pool:        { format:'roundrobin', matches:[], generated:false, num:1 },
     ttHistory:   [],
     poolHistory: [],
-    league: { games:[] }
+    league:      { games:[] }
   };
   viewing = { tt:null, pool:null };
   save(); renderAll();
@@ -1646,6 +1646,7 @@ function renderAll() {
   updateLeagueSelects();
   renderLeague();
   renderLeaderboards();
+  renderStats();
 }
 
 // ════════════════════════════════════════════════════
