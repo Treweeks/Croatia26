@@ -813,9 +813,10 @@ function copyShareUrl() {
   navigator.clipboard.writeText(url).then(() => toast('📋 Link copied! Paste it in WhatsApp')).catch(() => toast('Select the link above and copy manually'));
 }
 
-// Auto-pull every 30s if we have a bin (works for everyone, key or not)
+// Auto-pull every 30s — but NOT if a push is queued (would overwrite unsaved local changes)
 setInterval(async () => {
   if (!jbBinId) return;
+  if (syncTimer) return; // push is pending — skip pull to avoid overwriting local state
   const ok = await pullFromCloud();
   if (ok) renderAll();
 }, 30000);
@@ -913,7 +914,15 @@ function savePhotoUrl() {
   const url = document.getElementById('photo-url-input').value.trim();
   if (!url.startsWith('http')) return toast('Please enter a valid URL starting with http');
   const player = state.players.find(p => p.id === photoModalPlayerId);
-  if (player) { player.photo = url; save(); renderPlayers(); renderAllMatches(); toast(player.name + "'s photo saved! 📸"); }
+  if (player) {
+    player.photo = url;
+    saveLocal();           // save locally immediately
+    clearTimeout(syncTimer);
+    pushToCloud();         // push straight away — don't debounce photo saves
+    renderPlayers();
+    renderAllMatches();
+    toast(player.name + "'s photo saved! 📸");
+  }
   closePhotoModal();
 }
 
