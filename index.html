@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -302,14 +303,14 @@ label{font-size:0.74rem;font-weight:700;color:var(--muted);text-transform:upperc
   <!-- SYNC SETUP -->
   <div class="setup-card" id="sync-setup-card">
     <h3>🔗 Enable Live Sync</h3>
-    <p>So everyone can enter scores from their own phone, connect a free JSONBin account. Takes 5 minutes — only needs doing once!</p>
+    <p><strong>Only the organiser needs to do this once.</strong> After connecting, you'll get a special link — everyone else just opens that link and is automatically synced. No key needed for family members!</p>
     <div class="setup-steps">
       <div class="setup-step"><div class="setup-step-num">1</div><div>Go to <strong>jsonbin.io</strong> → Sign Up free</div></div>
-      <div class="setup-step"><div class="setup-step-num">2</div><div>Click <strong>API Keys</strong> → Create a Secret Key → copy it</div></div>
-      <div class="setup-step"><div class="setup-step-num">3</div><div>Paste it below and hit <strong>Connect</strong></div></div>
+      <div class="setup-step"><div class="setup-step-num">2</div><div>Click <strong>API Keys</strong> → Create a <strong>Secret Key</strong> → copy it</div></div>
+      <div class="setup-step"><div class="setup-step-num">3</div><div>Paste it below → <strong>Connect</strong> → copy the link shown → share in WhatsApp</div></div>
     </div>
     <div style="margin-top:10px">
-      <label>JSONBin Secret Key ($2b$…)</label>
+      <label>Your JSONBin Secret Key</label>
       <div class="api-row">
         <input type="text" id="jsonbin-key-input" placeholder="$2a$10$… or $2b$10$… your key here">
         <button class="btn btn-primary btn-sm" onclick="connectJsonBin()">Connect</button>
@@ -322,15 +323,18 @@ label{font-size:0.74rem;font-weight:700;color:var(--muted);text-transform:upperc
     <div style="display:flex;align-items:center;justify-content:space-between">
       <div>
         <div style="font-weight:800;font-size:0.9rem;color:var(--accent-pool)">✅ Sync Connected</div>
-        <div style="font-size:0.72rem;color:var(--muted);margin-top:2px">All score updates sync to everyone's phones</div>
+        <div style="font-size:0.72rem;color:var(--muted);margin-top:2px" id="sync-role-msg"></div>
       </div>
-      <button class="btn btn-sm btn-danger" onclick="disconnectSync()">Disconnect</button>
+      <button class="btn btn-sm btn-danger" onclick="disconnectSync()" id="sync-disconnect-btn">Disconnect</button>
     </div>
-    <div style="margin-top:10px;font-size:0.75rem;color:var(--muted)">
-      📱 <strong>Share this URL with everyone:</strong><br>
-      <span id="share-url" style="color:var(--accent-tt);word-break:break-all"></span><br>
-      <span style="color:var(--accent-pool);margin-top:4px;display:block">✅ Photos, scores and all data syncs to everyone's phones</span>
+    <div style="margin-top:12px;font-size:0.75rem;color:var(--muted)">
+      📱 <strong>Share this link — everyone auto-connects, no key needed:</strong>
     </div>
+    <div style="display:flex;gap:8px;margin-top:6px;align-items:center">
+      <div id="share-url" style="color:var(--accent-tt);word-break:break-all;font-size:0.72rem;flex:1;background:rgba(0,212,255,0.06);border:1px solid rgba(0,212,255,0.2);border-radius:8px;padding:8px 10px;"></div>
+      <button class="btn btn-primary btn-sm" onclick="copyShareUrl()" style="flex-shrink:0">Copy</button>
+    </div>
+    <div style="margin-top:8px;font-size:0.72rem;color:var(--accent-pool)">✅ Photos, scores and all data sync to everyone's phones</div>
   </div>
 
   <div class="card">
@@ -560,41 +564,56 @@ let state = {
   league: { games: [] }   // { id, p1, p2, winner, ts }
 };
 
-// JSONBin config (stored in localStorage, NOT in state — it's device-local)
-let jbKey    = localStorage.getItem('jb_key') || '';
-let jbBinId  = localStorage.getItem('jb_bin') || '';
+// JSONBin config — secret key stored only on admin device, Bin ID travels in the URL
+// So family members just open the link and are auto-connected — no key entry needed.
+let jbKey   = localStorage.getItem('jb_key') || '';
+let jbBinId = localStorage.getItem('jb_bin') || '';
 let syncTimer = null;
+
+// On load, grab bin ID from URL hash if present (e.g. #bin=abc123)
+// This lets everyone auto-connect just by opening the shared link
+(function initBinFromUrl() {
+  const hash = window.location.hash; // e.g. #bin=abc123
+  if (hash && hash.startsWith('#bin=')) {
+    const binFromUrl = hash.slice(5);
+    if (binFromUrl && binFromUrl !== jbBinId) {
+      jbBinId = binFromUrl;
+      localStorage.setItem('jb_bin', jbBinId);
+    }
+  }
+})();
 
 let viewing = { tt:null, pool:null };
 const currentFilter = { tt:'all', pool:'all' };
-let leagueWinnerSide = null; // 'p1' | 'p2'
+let leagueWinnerSide = null;
 
 // ════════════════════════════════════════════════════
-//  PERSISTENCE — localStorage (fallback) + JSONBin
+//  PERSISTENCE — localStorage + JSONBin
 // ════════════════════════════════════════════════════
 function saveLocal() {
   try { localStorage.setItem('fam_tourney_v5', JSON.stringify(state)); } catch(e){}
 }
 
 async function pushToCloud() {
-  if (!jbKey) return;
+  if (!jbKey) return; // only the admin (who has the key) can push
   const btn = document.getElementById('sync-btn');
   btn.textContent = '↻ Saving…'; btn.className = 'sync-btn syncing';
   try {
-    // Photos are now URLs (not base64) so they sync fine
     const slim = JSON.parse(JSON.stringify(state));
-
     if (!jbBinId) {
-      // Create bin
+      // Create bin — make it PUBLIC so family can read without a key
       const r = await fetch('https://api.jsonbin.io/v3/b', {
         method:'POST',
-        headers:{ 'Content-Type':'application/json', 'X-Master-Key':jbKey, 'X-Bin-Name':'family-tournament' },
+        headers:{ 'Content-Type':'application/json', 'X-Master-Key':jbKey, 'X-Bin-Name':'family-tournament', 'X-Bin-Private':'false' },
         body: JSON.stringify(slim)
       });
       if (!r.ok) throw new Error('Create failed: ' + r.status);
       const d = await r.json();
       jbBinId = d.metadata.id;
       localStorage.setItem('jb_bin', jbBinId);
+      // Update URL hash so the shared link carries the bin ID
+      history.replaceState(null, '', window.location.pathname + window.location.search + '#bin=' + jbBinId);
+      renderSyncUI(); // refresh share URL now we have the bin
     } else {
       const r = await fetch('https://api.jsonbin.io/v3/b/'+jbBinId, {
         method:'PUT',
@@ -613,15 +632,15 @@ async function pushToCloud() {
 }
 
 async function pullFromCloud() {
-  if (!jbKey || !jbBinId) return false;
+  if (!jbBinId) return false;
   try {
-    const r = await fetch('https://api.jsonbin.io/v3/b/'+jbBinId+'/latest', {
-      headers:{ 'X-Master-Key':jbKey }
-    });
+    // Public bin — no key needed to read! Family members can pull without the secret key.
+    const headers = {};
+    if (jbKey) headers['X-Master-Key'] = jbKey;
+    const r = await fetch('https://api.jsonbin.io/v3/b/'+jbBinId+'/latest', { headers });
     if (!r.ok) return false;
     const d = await r.json();
-    const remote = d.record;
-    state = remote;
+    state = d.record;
     if (!state.league) state.league = { games:[] };
     saveLocal();
     return true;
@@ -630,7 +649,6 @@ async function pullFromCloud() {
 
 function save() {
   saveLocal();
-  // Debounce cloud push by 1.5s to batch rapid changes
   clearTimeout(syncTimer);
   syncTimer = setTimeout(pushToCloud, 1500);
 }
@@ -644,7 +662,7 @@ function load() {
 
 async function manualSync() {
   const btn = document.getElementById('sync-btn');
-  if (!jbKey) { toast('Connect JSONBin first — see the Players tab'); return; }
+  if (!jbBinId) { toast('Not connected yet — set up sync in the Players tab'); return; }
   btn.textContent = '↻ Syncing…'; btn.className = 'sync-btn syncing';
   const ok = await pullFromCloud();
   if (ok) {
@@ -663,38 +681,55 @@ async function manualSync() {
 // ════════════════════════════════════════════════════
 async function connectJsonBin() {
   const key = document.getElementById('jsonbin-key-input').value.trim();
-  if (!key || (!key.startsWith('$2b$') && !key.startsWith('$2a$'))) return toast('Paste a valid JSONBin key (starts with $2a$ or $2b$)');
+  if (!key || (!key.startsWith('$2b$') && !key.startsWith('$2a$'))) return toast('Paste your JSONBin Secret Key (starts with $2a$ or $2b$)');
   jbKey = key;
   localStorage.setItem('jb_key', jbKey);
   document.getElementById('sync-status-msg').textContent = 'Connecting…';
-  // Try to push current state to create bin
   await pushToCloud();
   if (jbBinId) {
     renderSyncUI();
-    toast('✅ Connected! Share the URL with your family.');
+    toast('✅ Connected! Copy the link below and share it with everyone.');
   } else {
-    document.getElementById('sync-status-msg').textContent = '❌ Could not connect. Check your key.';
+    document.getElementById('sync-status-msg').textContent = '❌ Could not connect. Check your key and try again.';
   }
 }
 
 function disconnectSync() {
-  if (!confirm('Disconnect sync? Scores will still be saved locally.')) return;
+  if (!confirm('Disconnect sync? Scores will still be saved locally on this device.')) return;
   jbKey = ''; jbBinId = '';
   localStorage.removeItem('jb_key'); localStorage.removeItem('jb_bin');
+  history.replaceState(null, '', window.location.pathname + window.location.search);
   renderSyncUI();
   toast('Sync disconnected');
 }
 
 function renderSyncUI() {
-  const hasSync = !!(jbKey && jbBinId);
-  document.getElementById('sync-setup-card').style.display = hasSync ? 'none' : 'block';
-  document.getElementById('sync-connected-card').style.display = hasSync ? 'block' : 'none';
-  if (hasSync) document.getElementById('share-url').textContent = window.location.href;
+  // Connected = we have a bin ID (either admin with key, or family member from URL)
+  const hasBin  = !!jbBinId;
+  const isAdmin = !!(jbKey && jbBinId);
+  document.getElementById('sync-setup-card').style.display  = isAdmin ? 'none' : 'block';
+  document.getElementById('sync-connected-card').style.display = hasBin ? 'block' : 'none';
+  if (hasBin) {
+    // Share URL always includes the #bin= hash so recipients auto-connect
+    const shareUrl = window.location.origin + window.location.pathname + '#bin=' + jbBinId;
+    document.getElementById('share-url').textContent = shareUrl;
+    document.getElementById('sync-role-msg').textContent = isAdmin
+      ? '🔑 You are the admin — scores push to the cloud automatically.'
+      : '👥 Family member — tap ↻ Sync to get the latest scores.';
+    // Only admin can disconnect
+    const dcBtn = document.getElementById('sync-disconnect-btn');
+    if (dcBtn) dcBtn.style.display = isAdmin ? 'inline-flex' : 'none';
+  }
 }
 
-// Auto-pull every 30s if synced
+function copyShareUrl() {
+  const url = document.getElementById('share-url').textContent;
+  navigator.clipboard.writeText(url).then(() => toast('📋 Link copied! Paste it in WhatsApp')).catch(() => toast('Select the link above and copy manually'));
+}
+
+// Auto-pull every 30s if we have a bin (works for everyone, key or not)
 setInterval(async () => {
-  if (!jbKey || !jbBinId) return;
+  if (!jbBinId) return;
   const ok = await pullFromCloud();
   if (ok) renderAll();
 }, 30000);
@@ -1541,8 +1576,15 @@ function toast(msg) {
 //  INIT
 // ════════════════════════════════════════════════════
 load();
-renderAll();
-renderSyncUI();
+// If we have a bin ID (either admin or family via URL), pull latest data immediately
+(async () => {
+  if (jbBinId) {
+    const ok = await pullFromCloud();
+    if (ok) toast('✅ Loaded latest scores from cloud');
+  }
+  renderAll();
+  renderSyncUI();
+})();
 </script>
 </body>
 </html>
