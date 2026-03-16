@@ -40,6 +40,7 @@ body{background:var(--bg);color:var(--text);font-family:'Nunito',sans-serif;min-
 .tab[data-tab="league"].active::after{background:var(--accent-league);}
 .tab[data-tab="standings"].active::after{background:var(--gold);}
 .tab[data-tab="stats"].active::after{background:#ff6b9d;}
+.tab[data-tab="bracket"].active::after{background:#ff6b9d;}
 .tab-emoji{display:block;font-size:1.15rem;margin-bottom:1px;}
 
 /* ── PAGES ── */
@@ -274,6 +275,31 @@ label{font-size:0.74rem;font-weight:700;color:var(--muted);text-transform:upperc
   .tab{font-size:0.6rem;padding:9px 3px;}
   .tab-emoji{font-size:1rem;}
 }
+/* ── BRACKET ── */
+.bracket-wrap{overflow-x:auto;padding-bottom:16px;}
+.bracket-wrap::-webkit-scrollbar{height:4px;}
+.bracket-wrap::-webkit-scrollbar-thumb{background:rgba(255,255,255,0.1);border-radius:4px;}
+.bracket-stage{display:flex;gap:0;align-items:stretch;}
+.bracket-round-col{display:flex;flex-direction:column;justify-content:space-around;min-width:130px;padding:0 8px;position:relative;}
+.bracket-round-col:not(:last-child)::after{content:'';position:absolute;right:-1px;top:5%;height:90%;width:1px;background:rgba(255,255,255,0.07);}
+.bracket-round-header{font-family:'Bebas Neue',cursive;font-size:0.82rem;letter-spacing:2px;color:var(--gold);text-align:center;margin-bottom:10px;padding-bottom:6px;border-bottom:1px solid rgba(255,215,0,0.2);}
+.bracket-match{background:var(--card2);border-radius:10px;border:1px solid rgba(255,255,255,0.07);overflow:hidden;margin:6px 0;position:relative;transition:all 0.2s;flex-shrink:0;}
+.bracket-match.active-match{border-color:var(--gold);box-shadow:0 0 12px rgba(255,215,0,0.2);animation:pulse-gold 2s infinite;}
+.bracket-match.completed-match{border-left:3px solid rgba(0,255,157,0.5);}
+.bracket-slot{display:flex;align-items:center;gap:6px;padding:7px 8px;min-height:38px;}
+.bracket-slot:first-child{border-bottom:1px solid rgba(255,255,255,0.06);}
+.bracket-slot.winner{background:rgba(0,255,157,0.07);}
+.bracket-slot.loser{opacity:0.5;}
+.bracket-slot-avatar{width:22px;height:22px;border-radius:50%;object-fit:cover;flex-shrink:0;font-size:0.7rem;display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,#2a2a4a,#1a1a3a);}
+.bracket-slot-name{font-size:0.75rem;font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:1;}
+.bracket-slot-score{font-family:'Bebas Neue',cursive;font-size:0.9rem;color:var(--gold);flex-shrink:0;}
+.bracket-slot.tbd .bracket-slot-name{color:var(--muted);font-weight:400;font-style:italic;}
+.bracket-connector{display:flex;align-items:center;justify-content:center;padding:0 2px;flex-shrink:0;}
+.bracket-champion{text-align:center;padding:20px 16px;background:linear-gradient(135deg,rgba(255,215,0,0.1),rgba(255,165,0,0.05));border:2px solid rgba(255,215,0,0.4);border-radius:14px;margin-top:16px;}
+.bracket-champion-crown{font-size:2.5rem;display:block;animation:float 2s ease-in-out infinite;}
+.bracket-champion-name{font-family:'Bebas Neue',cursive;font-size:2rem;letter-spacing:3px;color:var(--gold);margin-top:4px;}
+.bracket-rr-note{background:rgba(0,212,255,0.08);border:1px solid rgba(0,212,255,0.2);border-radius:12px;padding:14px;text-align:center;margin-bottom:14px;}
+.bracket-rr-note p{font-size:0.82rem;color:var(--muted);line-height:1.6;}
 </style>
 </head>
 <body>
@@ -292,6 +318,7 @@ label{font-size:0.74rem;font-weight:700;color:var(--muted);text-transform:upperc
   <div class="tab" data-tab="tt"><span class="tab-emoji">🏓</span>Ping Pong</div>
   <div class="tab" data-tab="pool"><span class="tab-emoji">🎱</span>Pool</div>
   <div class="tab" data-tab="league"><span class="tab-emoji">⚽</span>League</div>
+  <div class="tab" data-tab="bracket"><span class="tab-emoji">🏆</span>Bracket</div>
   <div class="tab" data-tab="standings"><span class="tab-emoji">🏅</span>Standings</div>
   <div class="tab" data-tab="stats"><span class="tab-emoji">📊</span>Stats</div>
 </div>
@@ -508,6 +535,18 @@ label{font-size:0.74rem;font-weight:700;color:var(--muted);text-transform:upperc
     <div class="card-title">🏆 Tournament Champions</div>
     <div id="champions-list"></div>
   </div>
+</div>
+
+<!-- ══════════════════ BRACKET PAGE ══════════════════ -->
+<div class="page" id="page-bracket">
+  <div style="display:flex;gap:8px;margin-bottom:13px;flex-wrap:wrap;align-items:center">
+    <div id="bracket-sport-label" class="sport-title tt" style="font-size:1.3rem">🏓 TABLE TENNIS</div>
+    <div style="display:flex;gap:6px;margin-left:auto">
+      <button class="filter-btn active" id="bracket-tt-btn"   onclick="switchBracketSport('tt')">🏓 TT</button>
+      <button class="filter-btn"        id="bracket-pool-btn" onclick="switchBracketSport('pool')">🎱 Pool</button>
+    </div>
+  </div>
+  <div id="bracket-content"></div>
 </div>
 
 <!-- ══════════════════ STATS PAGE ══════════════════ -->
@@ -793,6 +832,7 @@ document.querySelectorAll('.tab').forEach(t => {
     if (t.dataset.tab === 'standings') renderLeaderboards();
     if (t.dataset.tab === 'stats') renderStats();
     if (t.dataset.tab === 'league') renderLeague();
+    if (t.dataset.tab === 'bracket') renderBracket();
   });
 });
 
@@ -1647,6 +1687,190 @@ function renderAll() {
   renderLeague();
   renderLeaderboards();
   renderStats();
+  renderBracket();
+}
+
+// ════════════════════════════════════════════════════
+//  BRACKET VIEW
+// ════════════════════════════════════════════════════
+let bracketSport = 'tt';
+
+function switchBracketSport(sport) {
+  bracketSport = sport;
+  document.getElementById('bracket-tt-btn').classList.toggle('active', sport==='tt');
+  document.getElementById('bracket-pool-btn').classList.toggle('active', sport==='pool');
+  const label = document.getElementById('bracket-sport-label');
+  label.textContent = sport==='tt' ? '🏓 TABLE TENNIS' : '🎱 POOL TOURNAMENT';
+  label.className = 'sport-title ' + sport;
+  renderBracket();
+}
+
+function renderBracket() {
+  const content = document.getElementById('bracket-content');
+  const s = state[bracketSport];
+
+  if (!s.generated) {
+    content.innerHTML = `<div class="empty-state"><span class="emoji">🏆</span><p>Generate a tournament first to see the bracket.</p></div>`;
+    return;
+  }
+
+  if (s.format === 'roundrobin') {
+    renderRoundRobinBracket(content);
+    return;
+  }
+
+  // ── KNOCKOUT BRACKET ──
+  const matches = s.matches.filter(m => !m.bye);
+  const rounds  = [...new Set(matches.map(m => m.roundNum))].sort((a,b) => a-b);
+
+  // Group matches by round
+  const byRound = {};
+  rounds.forEach(r => byRound[r] = matches.filter(m => m.roundNum === r));
+
+  // Round name labels (innermost = final)
+  const rNames = ['','Final','Semi-Final','Quarter-Final','Round of 16','Round of 32'];
+  const totalRounds = rounds.length;
+
+  // Find champion
+  const lastRound = byRound[rounds[rounds.length-1]];
+  const finalMatch = lastRound?.[0];
+  const champion = finalMatch?.winner ? state.players.find(p => p.id===finalMatch.winner) : null;
+
+  let html = `<div class="bracket-wrap"><div class="bracket-stage">`;
+
+  rounds.forEach((rn, ri) => {
+    const roundMatches = byRound[rn];
+    const label = rNames[totalRounds - ri] || `Round ${ri+1}`;
+    html += `<div class="bracket-round-col">`;
+    html += `<div class="bracket-round-header">${label}</div>`;
+    roundMatches.forEach(m => {
+      html += renderBracketMatch(m, bracketSport);
+    });
+    html += `</div>`;
+  });
+
+  html += `</div></div>`; // close stage + wrap
+
+  // Champion display
+  if (champion) {
+    html += `<div class="bracket-champion">
+      <span class="bracket-champion-crown">👑</span>
+      <div style="font-size:0.75rem;color:var(--muted);text-transform:uppercase;letter-spacing:2px;margin-top:6px">Champion</div>
+      <div class="bracket-champion-name">${champion.name.toUpperCase()}</div>
+      <div style="margin-top:8px;font-size:1.4rem">🥂🎉🏆🎉🥂</div>
+    </div>`;
+  }
+
+  content.innerHTML = html;
+}
+
+function renderBracketMatch(m, sport) {
+  const p1 = state.players.find(p => p.id===m.p1);
+  const p2 = state.players.find(p => p.id===m.p2);
+  const isDone = !!m.winner;
+  const isPool = sport==='pool';
+  const isNext = !isDone && p1 && p2;
+
+  const slotHtml = (player, isWinner, score) => {
+    if (!player) {
+      return `<div class="bracket-slot tbd">
+        <div class="bracket-slot-avatar">?</div>
+        <div class="bracket-slot-name">TBD</div>
+      </div>`;
+    }
+    const avatarHtml = player.photo
+      ? `<img src="${player.photo}" class="bracket-slot-avatar" style="object-fit:cover">`
+      : `<div class="bracket-slot-avatar" style="font-size:0.65rem">${pEmoji(player)}</div>`;
+    const winnerClass = isDone ? (isWinner ? 'winner' : 'loser') : '';
+    const scoreHtml = isDone && !isPool && score!==null ? `<div class="bracket-slot-score">${score}</div>` : '';
+    const crown = isDone && isWinner ? `<span style="font-size:0.7rem;margin-left:2px">👑</span>` : '';
+    return `<div class="bracket-slot ${winnerClass}">
+      ${avatarHtml}
+      <div class="bracket-slot-name">${player.name}${crown}</div>
+      ${scoreHtml}
+    </div>`;
+  };
+
+  const p1IsWinner = m.winner === m.p1;
+  const p2IsWinner = m.winner === m.p2;
+  const matchClass = isDone ? 'completed-match' : isNext ? 'active-match' : '';
+
+  return `<div class="bracket-match ${matchClass}">
+    ${slotHtml(p1, p1IsWinner, m.score1)}
+    ${slotHtml(p2, p2IsWinner, m.score2)}
+  </div>`;
+}
+
+function renderRoundRobinBracket(content) {
+  // For round robin: show a standings table + next 3 upcoming matches
+  const matches = state[bracketSport].matches;
+  const done = matches.filter(m => m.winner);
+  const pending = matches.filter(m => !m.winner);
+  const total = matches.length;
+  const pct = total ? Math.round(done.length/total*100) : 0;
+
+  // Build standings
+  const pts = {};
+  state.players.forEach(p => pts[p.id] = { w:0, l:0, d:0, played:0 });
+  done.forEach(m => {
+    if (pts[m.winner]) { pts[m.winner].w++; pts[m.winner].played++; }
+    const loser = m.winner===m.p1?m.p2:m.p1;
+    if (pts[loser]) { pts[loser].l++; pts[loser].played++; }
+  });
+  const sorted = state.players.map(p => ({p, ...pts[p.id]})).sort((a,b) => b.w-a.w);
+
+  const rankCol = i => i===0?'var(--gold)':i===1?'var(--silver)':i===2?'var(--bronze)':'var(--muted)';
+  const rankIco = i => i===0?'🥇':i===1?'🥈':i===2?'🥉':`${i+1}`;
+
+  let html = `<div class="bracket-rr-note">
+    <p>This is a <strong>Round Robin</strong> — everyone plays everyone.<br>
+    Switch to <strong>Knockout</strong> format for a visual bracket tree.</p>
+  </div>`;
+
+  // Progress bar
+  html += `<div class="card" style="padding:14px">
+    <div style="display:flex;justify-content:space-between;margin-bottom:6px">
+      <div style="font-family:'Bebas Neue',cursive;font-size:1rem;letter-spacing:2px;color:var(--gold)">Progress</div>
+      <div style="font-size:0.8rem;color:var(--muted)">${done.length} / ${total} matches</div>
+    </div>
+    <div class="progress-bar-wrap" style="margin-bottom:14px"><div class="progress-bar-fill ${bracketSport}" style="width:${pct}%"></div></div>
+    <table style="width:100%;border-collapse:collapse;font-size:0.82rem">
+      <thead><tr>
+        <th style="text-align:left;font-size:0.64rem;color:var(--muted);padding:5px 6px;border-bottom:1px solid rgba(255,255,255,0.07)">#</th>
+        <th style="text-align:left;font-size:0.64rem;color:var(--muted);padding:5px 6px;border-bottom:1px solid rgba(255,255,255,0.07)">Player</th>
+        <th style="font-size:0.64rem;color:var(--muted);padding:5px 6px;border-bottom:1px solid rgba(255,255,255,0.07)">P</th>
+        <th style="font-size:0.64rem;color:var(--muted);padding:5px 6px;border-bottom:1px solid rgba(255,255,255,0.07)">W</th>
+        <th style="font-size:0.64rem;color:var(--muted);padding:5px 6px;border-bottom:1px solid rgba(255,255,255,0.07)">L</th>
+      </tr></thead>
+      <tbody>
+      ${sorted.map((r,i) => `<tr>
+        <td style="padding:7px 6px;font-family:'Bebas Neue',cursive;font-size:1.1rem;color:${rankCol(i)}">${rankIco(i)}</td>
+        <td style="padding:7px 6px"><div style="display:flex;align-items:center;gap:7px">${getAvatarInline(r.p,26)}<span style="font-weight:800">${r.p.name}</span></div></td>
+        <td style="padding:7px 6px;text-align:center;color:var(--muted)">${r.played}</td>
+        <td style="padding:7px 6px;text-align:center;color:var(--accent-pool);font-weight:800">${r.w}</td>
+        <td style="padding:7px 6px;text-align:center;color:var(--danger)">${r.l}</td>
+      </tr>`).join('')}
+      </tbody>
+    </table>
+  </div>`;
+
+  // Next up matches
+  if (pending.length) {
+    html += `<div class="card" style="padding:14px"><div style="font-family:'Bebas Neue',cursive;font-size:1rem;letter-spacing:2px;color:var(--gold);margin-bottom:10px">Next Up</div>`;
+    pending.slice(0,4).forEach((m,i) => {
+      const p1=state.players.find(p=>p.id===m.p1), p2=state.players.find(p=>p.id===m.p2);
+      if (!p1||!p2) return;
+      html += `<div style="display:flex;align-items:center;gap:8px;padding:9px;background:${i===0?'rgba(255,215,0,0.07)':'rgba(255,255,255,0.03)'};border-radius:10px;margin-bottom:6px;border:1px solid ${i===0?'rgba(255,215,0,0.25)':'rgba(255,255,255,0.05)'}">
+        ${getAvatarInline(p1,30)}<span style="font-weight:800;font-size:0.84rem;flex:1">${p1.name}</span>
+        <span style="font-family:'Bebas Neue',cursive;font-size:1.1rem;color:var(--muted)">VS</span>
+        <span style="font-weight:800;font-size:0.84rem;flex:1;text-align:right">${p2.name}</span>${getAvatarInline(p2,30)}
+        ${i===0?'<span style="font-size:0.64rem;font-weight:800;color:var(--gold);background:rgba(255,215,0,0.15);padding:3px 7px;border-radius:10px;margin-left:4px">▶ NEXT</span>':''}
+      </div>`;
+    });
+    html += `</div>`;
+  }
+
+  content.innerHTML = html;
 }
 
 // ════════════════════════════════════════════════════
