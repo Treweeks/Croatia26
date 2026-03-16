@@ -606,7 +606,11 @@ async function pushToCloud() {
         headers:{ 'Content-Type':'application/json', 'X-Master-Key':jbKey, 'X-Bin-Name':'family-tournament', 'X-Bin-Private':'false' },
         body: JSON.stringify(slim)
       });
-      if (!r.ok) throw new Error('Create failed: ' + r.status);
+      if (!r.ok) {
+        const txt = await r.text();
+        console.error('Create bin failed', r.status, txt);
+        throw new Error('Create failed: ' + r.status + ' ' + txt);
+      }
       const d = await r.json();
       jbBinId = d.metadata.id;
       localStorage.setItem('jb_bin', jbBinId);
@@ -619,7 +623,11 @@ async function pushToCloud() {
         headers:{ 'Content-Type':'application/json', 'X-Master-Key':jbKey },
         body: JSON.stringify(slim)
       });
-      if (!r.ok) throw new Error('Put failed: ' + r.status);
+      if (!r.ok) {
+        const txt = await r.text();
+        console.error('Put bin failed', r.status, txt);
+        throw new Error('Put failed: ' + r.status + ' ' + txt);
+      }
     }
     btn.textContent = '✓ Saved'; btn.className = 'sync-btn ok';
     setTimeout(() => { btn.textContent = '↻ Sync'; btn.className = 'sync-btn'; }, 2500);
@@ -633,17 +641,31 @@ async function pushToCloud() {
 async function pullFromCloud() {
   if (!jbBinId) return false;
   try {
-    // Public bin — no key needed to read! Family members can pull without the secret key.
-    const headers = {};
+    const headers = { 'X-Bin-Meta': 'false' };
     if (jbKey) headers['X-Master-Key'] = jbKey;
-    const r = await fetch('https://api.jsonbin.io/v3/b/'+jbBinId+'/latest', { headers });
-    if (!r.ok) return false;
+    const url = 'https://api.jsonbin.io/v3/b/' + jbBinId + '/latest';
+    const r = await fetch(url, { headers });
+    if (!r.ok) {
+      const txt = await r.text();
+      console.error('pullFromCloud failed', r.status, txt);
+      toast('Sync error ' + r.status + ' — see console for details');
+      return false;
+    }
     const d = await r.json();
-    state = d.record;
+    // JSONBin wraps response in { record: {...} }
+    const incoming = d.record || d;
+    if (!incoming || typeof incoming !== 'object' || !incoming.players) {
+      console.error('Unexpected response shape', d);
+      return false;
+    }
+    state = incoming;
     if (!state.league) state.league = { games:[] };
     saveLocal();
     return true;
-  } catch(e) { return false; }
+  } catch(e) {
+    console.error('pullFromCloud exception', e);
+    return false;
+  }
 }
 
 function save() {
