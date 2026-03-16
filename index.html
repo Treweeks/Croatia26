@@ -610,6 +610,7 @@ let state = {
 let jbKey   = localStorage.getItem('jb_key') || '';
 let jbBinId = localStorage.getItem('jb_bin') || '';
 let syncTimer = null;
+let pushInProgress = false;  // true while a cloud push is running
 
 // On load, grab bin ID from URL hash if present (e.g. #bin=abc123)
 // This lets everyone auto-connect just by opening the shared link
@@ -637,6 +638,7 @@ function saveLocal() {
 
 async function pushToCloud() {
   if (!jbKey) return;
+  pushInProgress = true;
   const btn = document.getElementById('sync-btn');
   btn.textContent = '↻ Saving…'; btn.className = 'sync-btn syncing';
   try {
@@ -665,12 +667,10 @@ async function pushToCloud() {
         body: JSON.stringify(slim)
       });
       if (r.status === 404) {
-        // Bin was deleted or ID is wrong — recreate it
         console.warn('Bin 404 on PUT — recreating');
         jbBinId = '';
         localStorage.removeItem('jb_bin');
         await doCreate();
-        // Now do the PUT on the new bin
         await fetch('https://api.jsonbin.io/v3/b/'+jbBinId, {
           method:'PUT',
           headers:{ 'Content-Type':'application/json', 'X-Master-Key':jbKey },
@@ -690,6 +690,8 @@ async function pushToCloud() {
     setTimeout(() => { btn.textContent = '↻ Sync'; btn.className = 'sync-btn'; }, 3000);
     console.error('Push error', e);
     toast('Push error: ' + e.message);
+  } finally {
+    pushInProgress = false;  // always clear, even on error
   }
 }
 
@@ -714,7 +716,14 @@ async function pullFromCloud() {
       console.error('Unexpected response shape', d);
       return false;
     }
+    // Safety net: never overwrite a locally-saved photo with null from the cloud
+    // (photos are pushed immediately but there's always a small window)
+    const localPhotos = {};
+    state.players.forEach(p => { if (p.photo) localPhotos[p.id] = p.photo; });
     state = incoming;
+    state.players.forEach(p => {
+      if (!p.photo && localPhotos[p.id]) p.photo = localPhotos[p.id];
+    });
     if (!state.league) state.league = { games:[] };
     saveLocal();
     return true;
@@ -813,10 +822,10 @@ function copyShareUrl() {
   navigator.clipboard.writeText(url).then(() => toast('📋 Link copied! Paste it in WhatsApp')).catch(() => toast('Select the link above and copy manually'));
 }
 
-// Auto-pull every 30s — but NOT if a push is queued (would overwrite unsaved local changes)
+// Auto-pull every 30s — skip entirely if a push is pending or in progress
 setInterval(async () => {
   if (!jbBinId) return;
-  if (syncTimer) return; // push is pending — skip pull to avoid overwriting local state
+  if (syncTimer || pushInProgress) return; // don't overwrite local state mid-save
   const ok = await pullFromCloud();
   if (ok) renderAll();
 }, 30000);
