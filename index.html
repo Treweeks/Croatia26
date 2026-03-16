@@ -353,9 +353,12 @@ label{font-size:0.74rem;font-weight:700;color:var(--muted);text-transform:upperc
   </div>
 
   <div class="danger-zone card">
-    <div class="card-title" style="color:var(--danger)">⚠️ Reset Everything</div>
-    <p style="font-size:0.75rem;color:var(--muted);margin-bottom:9px;">Deletes ALL players, tournaments, league history and sync data.</p>
-    <button class="btn btn-danger btn-sm" onclick="resetAll()">🗑️ Wipe All Data</button>
+    <div class="card-title" style="color:var(--danger)">⚠️ Reset Options</div>
+    <p style="font-size:0.75rem;color:var(--muted);margin-bottom:12px;">Use <strong>Reset Tournaments</strong> to wipe all match data for a clean start — players and photos are kept. Use <strong>Wipe Everything</strong> only if you want to start completely fresh.</p>
+    <div style="display:flex;flex-direction:column;gap:8px">
+      <button class="btn btn-danger btn-sm" onclick="resetTournamentsOnly()" style="background:linear-gradient(135deg,#ff6b35,#cc4400)">🔄 Reset Tournaments &amp; League — keep players</button>
+      <button class="btn btn-danger btn-sm" onclick="resetAll()">🗑️ Wipe Everything including players</button>
+    </div>
   </div>
 </div>
 
@@ -594,39 +597,51 @@ function saveLocal() {
 }
 
 async function pushToCloud() {
-  if (!jbKey) return; // only the admin (who has the key) can push
+  if (!jbKey) return;
   const btn = document.getElementById('sync-btn');
   btn.textContent = '↻ Saving…'; btn.className = 'sync-btn syncing';
   try {
     const slim = JSON.parse(JSON.stringify(state));
-    if (!jbBinId) {
-      // Create bin — make it PUBLIC so family can read without a key
+
+    const doCreate = async () => {
       const r = await fetch('https://api.jsonbin.io/v3/b', {
         method:'POST',
         headers:{ 'Content-Type':'application/json', 'X-Master-Key':jbKey, 'X-Bin-Name':'family-tournament', 'X-Bin-Private':'false' },
         body: JSON.stringify(slim)
       });
-      if (!r.ok) {
-        const txt = await r.text();
-        console.error('Create bin failed', r.status, txt);
-        throw new Error('Create failed: ' + r.status + ' ' + txt);
-      }
+      if (!r.ok) { const txt=await r.text(); throw new Error('Create failed: '+r.status+' '+txt); }
       const d = await r.json();
       jbBinId = d.metadata.id;
       localStorage.setItem('jb_bin', jbBinId);
-      // Update URL hash so the shared link carries the bin ID
       history.replaceState(null, '', window.location.pathname + window.location.search + '#bin=' + jbBinId);
-      renderSyncUI(); // refresh share URL now we have the bin
+      renderSyncUI();
+    };
+
+    if (!jbBinId) {
+      await doCreate();
     } else {
       const r = await fetch('https://api.jsonbin.io/v3/b/'+jbBinId, {
         method:'PUT',
         headers:{ 'Content-Type':'application/json', 'X-Master-Key':jbKey },
         body: JSON.stringify(slim)
       });
-      if (!r.ok) {
+      if (r.status === 404) {
+        // Bin was deleted or ID is wrong — recreate it
+        console.warn('Bin 404 on PUT — recreating');
+        jbBinId = '';
+        localStorage.removeItem('jb_bin');
+        await doCreate();
+        // Now do the PUT on the new bin
+        await fetch('https://api.jsonbin.io/v3/b/'+jbBinId, {
+          method:'PUT',
+          headers:{ 'Content-Type':'application/json', 'X-Master-Key':jbKey },
+          body: JSON.stringify(slim)
+        });
+        toast('⚠️ Bin recreated — copy the new share link from Players tab!');
+      } else if (!r.ok) {
         const txt = await r.text();
         console.error('Put bin failed', r.status, txt);
-        throw new Error('Put failed: ' + r.status + ' ' + txt);
+        throw new Error('Put failed: '+r.status+' '+txt);
       }
     }
     btn.textContent = '✓ Saved'; btn.className = 'sync-btn ok';
@@ -635,6 +650,7 @@ async function pushToCloud() {
     btn.textContent = '✕ Error'; btn.className = 'sync-btn err';
     setTimeout(() => { btn.textContent = '↻ Sync'; btn.className = 'sync-btn'; }, 3000);
     console.error('Push error', e);
+    toast('Push error: ' + e.message);
   }
 }
 
@@ -648,7 +664,8 @@ async function pullFromCloud() {
     if (!r.ok) {
       const txt = await r.text();
       console.error('pullFromCloud failed', r.status, txt);
-      toast('Sync error ' + r.status + ' — see console for details');
+      if (r.status === 404) toast('⚠️ Bin not found (404) — ask the organiser to hit ↻ Sync to get a fresh link');
+      else toast('Sync error ' + r.status);
       return false;
     }
     const d = await r.json();
@@ -1216,7 +1233,10 @@ function renderMatchCard(sport, m, nextUp, isHistory) {
   } else if (isDone) {
     const winner=state.players.find(p=>p.id===m.winner);
     const sc=(!isPool&&m.score1!==null)?` <span style="color:var(--muted);font-size:0.7rem">${m.score1}–${m.score2}</span>`:'';
-    scoreSection=`<div style="margin-top:6px;font-size:0.76rem;color:var(--accent-pool);font-weight:800">👑 ${winner?.name} won${sc}</div>`;
+    scoreSection=`<div style="margin-top:6px;display:flex;align-items:center;justify-content:space-between;gap:8px">
+      <div style="font-size:0.76rem;color:var(--accent-pool);font-weight:800">👑 ${winner?.name} won${sc}</div>
+      ${!isHistory?`<button onclick="undoResult(${m.id},'${sport}')" style="background:rgba(255,255,255,0.07);border:1px solid rgba(255,255,255,0.12);border-radius:7px;color:var(--muted);font-family:'Nunito',sans-serif;font-size:0.68rem;font-weight:700;padding:4px 9px;cursor:pointer;white-space:nowrap">✏️ Edit</button>`:''}
+    </div>`;
   }
   return `<div class="match-card ${cc}">
     <div class="match-header">
@@ -1247,6 +1267,25 @@ function recordScore(matchId, sport) {
 function recordPoolWin(matchId, sport, winnerId) {
   const m = state[sport].matches.find(x => x.id===matchId); if (!m) return;
   m.winner = winnerId; save(); afterResult(sport, m);
+}
+
+function undoResult(matchId, sport) {
+  const m = state[sport].matches.find(x => x.id===matchId); if (!m) return;
+  // For knockout, also clear any downstream matches that were seeded from this result
+  if (state[sport].format === 'knockout') {
+    const loser = m.winner === m.p1 ? m.p2 : m.p1;
+    // Clear any future match where this winner was seeded in as p1/p2
+    state[sport].matches.forEach(fm => {
+      if (fm.id === matchId) return;
+      if (fm.p1 === m.winner || fm.p2 === m.winner) {
+        // Only clear if the match hasn't been played yet — don't cascade into completed ones
+        if (!fm.winner) { fm.p1 = fm.p1===m.winner ? null : fm.p1; fm.p2 = fm.p2===m.winner ? null : fm.p2; }
+      }
+    });
+  }
+  m.winner = null; m.score1 = null; m.score2 = null;
+  save(); renderSport(sport); renderLeaderboards();
+  toast('✏️ Result cleared — re-enter the score');
 }
 
 function afterResult(sport, m) {
@@ -1570,6 +1609,22 @@ function resetTournament(sport) {
   viewing[sport]=null; save(); renderSport(sport); updateStatusBadge(sport); updateProgress(sport); renderLeaderboards();
   toast('Tournament reset!');
 }
+function resetTournamentsOnly() {
+  if (!confirm('Reset all tournaments and league results?\n\nPlayers and photos will be KEPT.\nAll match results and history will be wiped.\n\nPerfect for going live after testing!')) return;
+  const players = state.players; // preserve players + photos
+  state = {
+    players,
+    tt:   { format:'roundrobin', matches:[], generated:false, num:1 },
+    pool: { format:'roundrobin', matches:[], generated:false, num:1 },
+    ttHistory:   [],
+    poolHistory: [],
+    league: { games:[] }
+  };
+  viewing = { tt:null, pool:null };
+  save(); renderAll();
+  toast('✅ All results wiped — players kept. Ready to go live! 🎉');
+}
+
 function resetAll() {
   if (!confirm('WIPE EVERYTHING? All players, tournaments, league games and sync config. Cannot be undone!')) return;
   state={players:[],tt:{format:'roundrobin',matches:[],generated:false,num:1},pool:{format:'roundrobin',matches:[],generated:false,num:1},ttHistory:[],poolHistory:[],league:{games:[]}};
