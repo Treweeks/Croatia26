@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -664,15 +663,24 @@ async function manualSync() {
   const btn = document.getElementById('sync-btn');
   if (!jbBinId) { toast('Not connected yet — set up sync in the Players tab'); return; }
   btn.textContent = '↻ Syncing…'; btn.className = 'sync-btn syncing';
-  const ok = await pullFromCloud();
-  if (ok) {
-    btn.textContent = '✓ Synced'; btn.className = 'sync-btn ok';
+  // Admin: push local state up first, then confirm
+  if (jbKey) {
+    await pushToCloud();
+    btn.textContent = '✓ Saved'; btn.className = 'sync-btn ok';
     setTimeout(() => { btn.textContent = '↻ Sync'; btn.className = 'sync-btn'; }, 2000);
-    renderAll();
-    toast('✅ Synced — scores updated!');
+    toast('✅ Your data pushed to cloud — family can now sync!');
   } else {
-    btn.textContent = '↻ Sync'; btn.className = 'sync-btn';
-    toast('Could not reach JSONBin — check connection');
+    // Family member: pull latest from cloud
+    const ok = await pullFromCloud();
+    if (ok) {
+      btn.textContent = '✓ Synced'; btn.className = 'sync-btn ok';
+      setTimeout(() => { btn.textContent = '↻ Sync'; btn.className = 'sync-btn'; }, 2000);
+      renderAll();
+      toast('✅ Synced — latest scores loaded!');
+    } else {
+      btn.textContent = '↻ Sync'; btn.className = 'sync-btn';
+      toast('Could not reach JSONBin — check connection');
+    }
   }
 }
 
