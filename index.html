@@ -369,7 +369,7 @@ label{font-size:0.74rem;font-weight:700;color:var(--muted);text-transform:upperc
       <input type="text" id="player-name-input" placeholder="Enter player name…" maxlength="20">
       <button class="btn btn-primary" onclick="addPlayer()">Add</button>
     </div>
-    <div style="font-size:0.74rem;color:var(--muted)"><span id="player-count">0</span>/13 players added</div>
+    <div style="font-size:0.74rem;color:var(--muted)"><span id="player-count">0</span>/14 players added</div>
   </div>
 
   <div class="card">
@@ -923,7 +923,7 @@ function addPlayer() {
   const inp = document.getElementById('player-name-input');
   const name = inp.value.trim();
   if (!name) return toast('Enter a name first!');
-  if (state.players.length >= 13) return toast('Max 13 players');
+  if (state.players.length >= 14) return toast('Max 14 players');
   if (state.players.find(p => p.name.toLowerCase() === name.toLowerCase())) return toast('Name already added!');
   state.players.push({ id: Date.now(), name, photo: null });
   inp.value = ''; save(); renderPlayers(); updateLeagueSelects(); updateGenerateButtons(); toast(name + ' added! 🎉');
@@ -1017,8 +1017,8 @@ function clearPhoto() {
   toast('Photo removed');
 }
 
-const EMOJIS = ['😀','😎','🤩','🦊','🐯','🦁','🐸','🦋','🌟','🔥','💫','⚡','🎯'];
-function pEmoji(p) { return EMOJIS[state.players.indexOf(p) % 13]; }
+const EMOJIS = ['😀','😎','🤩','🦊','🐯','🦁','🐸','🦋','🌟','🔥','💫','⚡','🎯','🎸'];
+function pEmoji(p) { return EMOJIS[state.players.indexOf(p) % 14]; }
 
 function getAvatar(player, size=40) {
   if (!player) return `<div style="width:${size}px;height:${size}px;border-radius:50%;background:#2a2a4a;display:flex;align-items:center;justify-content:center;font-size:${size*.42}px;margin:0 auto 5px;">👤</div>`;
@@ -1102,6 +1102,9 @@ function resetLeague() {
   state.league.games = []; save(); renderLeague(); toast('League reset!');
 }
 
+// ════════════════════════════════════════════════════
+//  LEAGUE RENDERING
+// ════════════════════════════════════════════════════
 function renderLeague() {
   renderLeagueTable();
   renderLeagueLog();
@@ -1714,6 +1717,7 @@ function renderStats() {
 // ════════════════════════════════════════════════════
 //  CHAMPION
 // ════════════════════════════════════════════════════
+// Updated showChampion and launchConfetti to accommodate more dynamic colorful options
 function showChampion(player, sport, num) {
   document.getElementById('champ-name').textContent = player.name.toUpperCase();
   document.getElementById('champ-sport-icon').textContent = sport==='tt'?'🏓':'🎱';
