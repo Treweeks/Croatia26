@@ -605,17 +605,13 @@ let state = {
   league: { games: [] }   // { id, p1, p2, winner, ts }
 };
 
-// JSONBin config — secret key stored only on admin device, Bin ID travels in the URL
-// So family members just open the link and are auto-connected — no key entry needed.
 let jbKey   = localStorage.getItem('jb_key') || '';
 let jbBinId = localStorage.getItem('jb_bin') || '';
 let syncTimer = null;
-let pushInProgress = false;  // true while a cloud push is running
+let pushInProgress = false;  
 
-// On load, grab bin ID from URL hash if present (e.g. #bin=abc123)
-// This lets everyone auto-connect just by opening the shared link
 (function initBinFromUrl() {
-  const hash = window.location.hash; // e.g. #bin=abc123
+  const hash = window.location.hash; 
   if (hash && hash.startsWith('#bin=')) {
     const binFromUrl = hash.slice(5);
     if (binFromUrl && binFromUrl !== jbBinId) {
@@ -634,11 +630,9 @@ let leagueWinnerSide = null;
 // ════════════════════════════════════════════════════
 function saveLocal() {
   try {
-    // Save state WITHOUT photos (keeps JSONBin payload small and avoids sync conflicts)
     const slim = JSON.parse(JSON.stringify(state));
     slim.players = slim.players.map(p => ({ ...p, photo: null }));
     localStorage.setItem('fam_tourney_v5', JSON.stringify(slim));
-    // Photos stored separately — never pushed to cloud, per-device only
     const photos = {};
     state.players.forEach(p => { if (p.photo) photos[p.id] = p.photo; });
     localStorage.setItem('fam_tourney_photos', JSON.stringify(photos));
@@ -709,7 +703,7 @@ async function pushToCloud() {
     console.error('Push error', e);
     toast('Push error: ' + e.message);
   } finally {
-    pushInProgress = false;  // always clear, even on error
+    pushInProgress = false;
   }
 }
 
@@ -728,7 +722,6 @@ async function pullFromCloud() {
       return false;
     }
     const d = await r.json();
-    // JSONBin wraps response in { record: {...} }
     const incoming = d.record || d;
     if (!incoming || typeof incoming !== 'object' || !incoming.players) {
       console.error('Unexpected response shape', d);
@@ -736,7 +729,7 @@ async function pullFromCloud() {
     }
     state = incoming;
     if (!state.league) state.league = { games:[] };
-    loadPhotos(); // always reapply local photos — cloud never stores them
+    loadPhotos(); 
     saveLocal();
     return true;
   } catch(e) {
@@ -747,7 +740,6 @@ async function pullFromCloud() {
 
 function save() {
   saveLocal();
-  // Snapshot NOW — before any pull can corrupt state in the next 1.5s
   const snapshot = JSON.stringify(state);
   clearTimeout(syncTimer);
   syncTimer = setTimeout(() => pushSnapshot(snapshot), 1500);
@@ -811,21 +803,19 @@ function load() {
     const d = localStorage.getItem('fam_tourney_v5');
     if (d) { state = JSON.parse(d); if (!state.league) state.league = { games:[] }; }
   } catch(e){}
-  loadPhotos(); // reapply local photos on top of loaded state
+  loadPhotos();
 }
 
 async function manualSync() {
   const btn = document.getElementById('sync-btn');
   if (!jbBinId) { toast('Not connected yet — set up sync in the Players tab'); return; }
   btn.textContent = '↻ Syncing…'; btn.className = 'sync-btn syncing';
-  // Admin: push local state up first, then confirm
   if (jbKey) {
     await pushToCloud();
     btn.textContent = '✓ Saved'; btn.className = 'sync-btn ok';
     setTimeout(() => { btn.textContent = '↻ Sync'; btn.className = 'sync-btn'; }, 2000);
     toast('✅ Your data pushed to cloud — family can now sync!');
   } else {
-    // Family member: pull latest from cloud
     const ok = await pullFromCloud();
     if (ok) {
       btn.textContent = '✓ Synced'; btn.className = 'sync-btn ok';
@@ -867,19 +857,16 @@ function disconnectSync() {
 }
 
 function renderSyncUI() {
-  // Connected = we have a bin ID (either admin with key, or family member from URL)
   const hasBin  = !!jbBinId;
   const isAdmin = !!(jbKey && jbBinId);
   document.getElementById('sync-setup-card').style.display  = isAdmin ? 'none' : 'block';
   document.getElementById('sync-connected-card').style.display = hasBin ? 'block' : 'none';
   if (hasBin) {
-    // Share URL always includes the #bin= hash so recipients auto-connect
     const shareUrl = window.location.origin + window.location.pathname + '#bin=' + jbBinId;
     document.getElementById('share-url').textContent = shareUrl;
     document.getElementById('sync-role-msg').textContent = isAdmin
       ? '🔑 You are the admin — scores push to the cloud automatically.'
       : '👥 Family member — tap ↻ Sync to get the latest scores.';
-    // Only admin can disconnect
     const dcBtn = document.getElementById('sync-disconnect-btn');
     if (dcBtn) dcBtn.style.display = isAdmin ? 'inline-flex' : 'none';
   }
@@ -890,10 +877,9 @@ function copyShareUrl() {
   navigator.clipboard.writeText(url).then(() => toast('📋 Link copied! Paste it in WhatsApp')).catch(() => toast('Select the link above and copy manually'));
 }
 
-// Auto-pull every 30s — skip entirely if a push is pending or in progress
 setInterval(async () => {
   if (!jbBinId) return;
-  if (syncTimer || pushInProgress) return; // don't overwrite local state mid-save
+  if (syncTimer || pushInProgress) return; 
   const ok = await pullFromCloud();
   if (ok) renderAll();
 }, 30000);
@@ -993,9 +979,9 @@ function savePhotoUrl() {
   const player = state.players.find(p => p.id === photoModalPlayerId);
   if (player) {
     player.photo = url;
-    saveLocal();              // save to localStorage immediately
-    clearTimeout(syncTimer);  // cancel any pending debounced push
-    pushToCloud();            // push to cloud right now — don't debounce
+    saveLocal();              
+    clearTimeout(syncTimer);  
+    pushToCloud();            
     renderPlayers();
     renderAllMatches();
     toast(player.name + "'s photo saved! 📸");
@@ -1102,9 +1088,6 @@ function resetLeague() {
   state.league.games = []; save(); renderLeague(); toast('League reset!');
 }
 
-// ════════════════════════════════════════════════════
-//  LEAGUE RENDERING
-// ════════════════════════════════════════════════════
 function renderLeague() {
   renderLeagueTable();
   renderLeagueLog();
@@ -1118,7 +1101,6 @@ function renderLeagueTable() {
     return;
   }
 
-  // Build stats
   const stats = {};
   state.players.forEach(p => stats[p.id] = { wins:0, losses:0, played:0, pts:0, streak:[], form:[] });
 
@@ -1128,13 +1110,11 @@ function renderLeagueTable() {
     if (stats[loser])    { stats[loser].losses++;  stats[loser].played++;  stats[loser].pts  += 1; stats[loser].streak.push('L');  stats[loser].form.push('L'); }
   });
 
-  // Sort: pts desc, wins desc, played desc
   const sorted = state.players
     .filter(p => stats[p.id].played > 0)
     .map(p => ({ player:p, ...stats[p.id] }))
     .sort((a,b) => b.pts-a.pts || b.wins-a.wins || b.played-a.played);
 
-  // Calculate current streak
   sorted.forEach(r => {
     const s = r.streak;
     if (!s.length) { r.curStreak = ''; return; }
@@ -1177,7 +1157,6 @@ function renderLeagueTable() {
     </tbody>
   </table></div>`;
 
-  // Also render non-played players as a smaller note
   const unplayed = state.players.filter(p => !stats[p.id].played);
   if (unplayed.length) {
     wrap.innerHTML += `<div style="font-size:0.72rem;color:var(--muted);margin-top:8px;">Not yet played: ${unplayed.map(p=>p.name).join(', ')}</div>`;
@@ -1407,14 +1386,10 @@ function recordPoolWin(matchId, sport, winnerId) {
 
 function undoResult(matchId, sport) {
   const m = state[sport].matches.find(x => x.id===matchId); if (!m) return;
-  // For knockout, also clear any downstream matches that were seeded from this result
   if (state[sport].format === 'knockout') {
-    const loser = m.winner === m.p1 ? m.p2 : m.p1;
-    // Clear any future match where this winner was seeded in as p1/p2
     state[sport].matches.forEach(fm => {
       if (fm.id === matchId) return;
       if (fm.p1 === m.winner || fm.p2 === m.winner) {
-        // Only clear if the match hasn't been played yet — don't cascade into completed ones
         if (!fm.winner) { fm.p1 = fm.p1===m.winner ? null : fm.p1; fm.p2 = fm.p2===m.winner ? null : fm.p2; }
       }
     });
@@ -1432,15 +1407,23 @@ function afterResult(sport, m) {
 }
 
 function rebuildKO(sport) {
-  const matches = state[sport].matches.filter(m => !m.bye);
+  const matches = state[sport].matches;
   const allR = [...new Set(matches.map(m => m.roundNum))].sort((a,b) => a-b);
-  for (let ri=1; ri<allR.length; ri++) {
-    const prev = matches.filter(m => m.roundNum===allR[ri-1]);
-    const curr = matches.filter(m => m.roundNum===allR[ri]);
-    const prevW = prev.filter(m => m.winner).map(m => m.winner);
-    curr.forEach((match,idx) => {
-      if (prevW[idx*2] && !match.p1)   match.p1 = prevW[idx*2];
-      if (prevW[idx*2+1] && !match.p2) match.p2 = prevW[idx*2+1];
+
+  for (let ri = 1; ri < allR.length; ri++) {
+    const prevMatches = matches.filter(m => m.roundNum === allR[ri - 1]);
+    const currMatches = matches.filter(m => m.roundNum === allR[ri]);
+
+    currMatches.forEach((match, idx) => {
+      const m1 = prevMatches[idx * 2];
+      const m2 = prevMatches[idx * 2 + 1];
+
+      if (m1 && m1.winner && match.p1 !== m1.winner) {
+        match.p1 = m1.winner;
+      }
+      if (m2 && m2.winner && match.p2 !== m2.winner) {
+        match.p2 = m2.winner;
+      }
     });
   }
   save();
@@ -1555,7 +1538,6 @@ function renderStats() {
     if(stats[loser]){stats[loser].poolLL++;stats[loser].leaguePts+=1;stats[loser].losses++;stats[loser].played++;}
   });
 
-  // Streaks across ALL games
   const streaks={};
   state.players.forEach(p=>streaks[p.id]={cur:0,max:0,side:'W'});
   [...allMatches,...leagueGames].forEach(m=>{
@@ -1577,7 +1559,6 @@ function renderStats() {
   const leagueKing=[...sorted].filter(r=>r.poolLW>0).sort((a,b)=>b.leaguePts-a.leaguePts)[0];
   const mostLeague=[...sorted].sort((a,b)=>(b.poolLW+b.poolLL)-(a.poolLW+a.poolLL))[0];
 
-  // Upset detection
   let biggestUpset=null;
   [...allMatches,...leagueGames].forEach(m=>{
     if(!m.winner||!m.p1||!m.p2)return;
@@ -1586,7 +1567,6 @@ function renderStats() {
     if(lW>wW+2){const w=state.players.find(p=>p.id===m.winner),l=state.players.find(p=>p.id==loser);if(w&&l&&(!biggestUpset||lW-wW>biggestUpset.gap))biggestUpset={winner:w,loser:l,gap:lW-wW};}
   });
 
-  // Rivalry
   const pairs={};
   [...allMatches,...leagueGames].forEach(m=>{
     if(!m.p1||!m.p2)return;
@@ -1643,7 +1623,6 @@ function renderStats() {
       </div>
     </div></div>`).join('');
 
-  // Pool League spotlight
   if (leagueGames.length >= 3) {
     html += `<div class="section-title">⚽ Pool League Spotlight</div>`;
     const leagueSorted = sorted.filter(r=>r.poolLW+r.poolLL>0).sort((a,b)=>b.leaguePts-a.leaguePts);
@@ -1658,7 +1637,6 @@ function renderStats() {
     html += `<div style="font-size:0.68rem;color:var(--muted);margin-top:6px">Win=3pts · Loss=1pt</div></div>`;
   }
 
-  // Win chart
   html += `<div class="section-title">📊 Overall Win Chart</div><div class="card">`;
   const maxW=Math.max(...sorted.map(r=>r.wins),1);
   html+=sorted.filter(r=>r.played>0).map(r=>`
@@ -1669,7 +1647,6 @@ function renderStats() {
     </div>`).join('');
   html+=`</div>`;
 
-  // Rivalry
   if (topRivalry) {
     html+=`<div class="section-title">⚔️ Top Rivalry</div>
     <div class="stat-card">
@@ -1681,7 +1658,6 @@ function renderStats() {
     </div>`;
   }
 
-  // H2H grid
   html+=`<div class="section-title">🤝 Head-to-Head</div><div class="card">`;
   if (topPairs.length) {
     html+=`<div class="h2h-grid">`;
@@ -1695,7 +1671,6 @@ function renderStats() {
   }
   html+=`</div>`;
 
-  // Fun facts
   html+=`<div class="section-title">🎲 Fun Facts</div><div class="card">`;
   const facts=[];
   facts.push(`🎯 ${total} matches across ${numTourneys} tournament(s) and the league — what a holiday!`);
@@ -1717,7 +1692,6 @@ function renderStats() {
 // ════════════════════════════════════════════════════
 //  CHAMPION
 // ════════════════════════════════════════════════════
-// Updated showChampion and launchConfetti to accommodate more dynamic colorful options
 function showChampion(player, sport, num) {
   document.getElementById('champ-name').textContent = player.name.toUpperCase();
   document.getElementById('champ-sport-icon').textContent = sport==='tt'?'🏓':'🎱';
@@ -1748,7 +1722,7 @@ function resetTournament(sport) {
 }
 function resetTournamentsOnly() {
   if (!confirm('Reset all tournaments and league results?\n\nPlayers and photos will be KEPT.\nAll match results, history and league games will be wiped.\n\nPerfect for going live after testing!')) return;
-  const players = state.players; // preserve players + photos
+  const players = state.players; 
   state = {
     players,
     tt:          { format:'roundrobin', matches:[], generated:false, num:1 },
@@ -1816,19 +1790,15 @@ function renderBracket() {
     return;
   }
 
-  // ── KNOCKOUT BRACKET ──
   const matches = s.matches.filter(m => !m.bye);
   const rounds  = [...new Set(matches.map(m => m.roundNum))].sort((a,b) => a-b);
 
-  // Group matches by round
   const byRound = {};
   rounds.forEach(r => byRound[r] = matches.filter(m => m.roundNum === r));
 
-  // Round name labels (innermost = final)
   const rNames = ['','Final','Semi-Final','Quarter-Final','Round of 16','Round of 32'];
   const totalRounds = rounds.length;
 
-  // Find champion
   const lastRound = byRound[rounds[rounds.length-1]];
   const finalMatch = lastRound?.[0];
   const champion = finalMatch?.winner ? state.players.find(p => p.id===finalMatch.winner) : null;
@@ -1846,9 +1816,8 @@ function renderBracket() {
     html += `</div>`;
   });
 
-  html += `</div></div>`; // close stage + wrap
+  html += `</div></div>`; 
 
-  // Champion display
   if (champion) {
     html += `<div class="bracket-champion">
       <span class="bracket-champion-crown">👑</span>
@@ -1899,14 +1868,12 @@ function renderBracketMatch(m, sport) {
 }
 
 function renderRoundRobinBracket(content) {
-  // For round robin: show a standings table + next 3 upcoming matches
   const matches = state[bracketSport].matches;
   const done = matches.filter(m => m.winner);
   const pending = matches.filter(m => !m.winner);
   const total = matches.length;
   const pct = total ? Math.round(done.length/total*100) : 0;
 
-  // Build standings
   const pts = {};
   state.players.forEach(p => pts[p.id] = { w:0, l:0, d:0, played:0 });
   done.forEach(m => {
@@ -1924,7 +1891,6 @@ function renderRoundRobinBracket(content) {
     Switch to <strong>Knockout</strong> format for a visual bracket tree.</p>
   </div>`;
 
-  // Progress bar
   html += `<div class="card" style="padding:14px">
     <div style="display:flex;justify-content:space-between;margin-bottom:6px">
       <div style="font-family:'Bebas Neue',cursive;font-size:1rem;letter-spacing:2px;color:var(--gold)">Progress</div>
@@ -1951,7 +1917,6 @@ function renderRoundRobinBracket(content) {
     </table>
   </div>`;
 
-  // Next up matches
   if (pending.length) {
     html += `<div class="card" style="padding:14px"><div style="font-family:'Bebas Neue',cursive;font-size:1rem;letter-spacing:2px;color:var(--gold);margin-bottom:10px">Next Up</div>`;
     pending.slice(0,4).forEach((m,i) => {
@@ -1983,7 +1948,6 @@ function toast(msg) {
 //  INIT
 // ════════════════════════════════════════════════════
 load();
-// If we have a bin ID (either admin or family via URL), pull latest data immediately
 (async () => {
   if (jbBinId) {
     const ok = await pullFromCloud();
